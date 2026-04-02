@@ -1,9 +1,12 @@
+import { apiUrl } from '../config'
+
 const defaultHeaders: HeadersInit = {
   Accept: 'application/json',
   'Content-Type': 'application/json',
 }
 
-export async function apiGet<T>(url: string, init?: RequestInit): Promise<T> {
+export async function apiGet<T>(path: string, init?: RequestInit): Promise<T> {
+  const url = apiUrl(path)
   const res = await fetch(url, {
     ...init,
     method: 'GET',
