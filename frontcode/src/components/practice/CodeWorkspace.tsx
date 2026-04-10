@@ -1,10 +1,20 @@
-import { useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import Editor from '@monaco-editor/react'
+import { Loader2, Play } from 'lucide-react'
+import { compileCode, type CompileLanguage } from '@/services/api'
 
 type CodeWorkspaceProps = {
   initialCode: string
   language?: string
   className?: string
+}
+
+function backendLanguage(monacoId: string): CompileLanguage | null {
+  const id = monacoId.toLowerCase()
+  if (id === 'java') return 'java'
+  if (id === 'python') return 'python'
+  if (id === 'javascript') return 'javascript'
+  return null
 }
 
 export function CodeWorkspace({
@@ -13,7 +23,45 @@ export function CodeWorkspace({
   className = '',
 }: CodeWorkspaceProps) {
   const [code, setCode] = useState(initialCode)
+  const [stdin, setStdin] = useState('')
   const [activeTab, setActiveTab] = useState<'code' | 'testcase'>('code')
+  const [consoleText, setConsoleText] = useState<string>(
+    '// Output appears here after you run.',
+  )
+  const [isRunning, setIsRunning] = useState(false)
+
+  const runLang = useMemo(() => backendLanguage(language), [language])
+  const canRun = runLang !== null
+
+  const handleRun = useCallback(async () => {
+    if (!runLang) {
+      setConsoleText(
+        '// Server run supports Java, Python, and JavaScript only. Change the Monaco language or editor mode.',
+      )
+      return
+    }
+
+    setIsRunning(true)
+    try {
+      const result = await compileCode({
+        code,
+        language: runLang,
+        input: stdin,
+      })
+      const parts = [(result.output ?? '').replace(/\s+$/, '')]
+      if (result.compileTime != null && result.compileTime !== '0.00') {
+        parts.push(`\n// compile: ${result.compileTime} ms`)
+      }
+      if (result.executionTime != null) {
+        parts.push(`\n// run: ${result.executionTime} ms`)
+      }
+      setConsoleText(parts.join(''))
+    } catch (e) {
+      setConsoleText(e instanceof Error ? e.message : String(e))
+    } finally {
+      setIsRunning(false)
+    }
+  }, [code, runLang, stdin])
 
   return (
     <section
@@ -47,8 +95,28 @@ export function CodeWorkspace({
               : 'text-zinc-500 hover:text-zinc-300'
           }`}
         >
-          Testcase
+          Custom input
         </button>
+        <div className="ml-auto flex items-center pr-1">
+          <button
+            type="button"
+            onClick={() => void handleRun()}
+            disabled={isRunning || !canRun}
+            title={
+              canRun
+                ? 'Run on server'
+                : 'Switch editor language to JavaScript, Python, or Java'
+            }
+            className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1 text-[0.7rem] font-semibold text-zinc-950 shadow-sm transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isRunning ? (
+              <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden />
+            ) : (
+              <Play className="size-3.5 shrink-0 fill-current" aria-hidden />
+            )}
+            Run
+          </button>
+        </div>
       </div>
 
       <div className="relative min-h-0 flex-1">
@@ -73,11 +141,20 @@ export function CodeWorkspace({
             }}
           />
         ) : (
-          <div className="flex h-full items-center justify-center bg-zinc-950 px-4">
-            <p className="max-w-sm text-center text-sm text-zinc-500">
-              Test cases will plug in here when the compiler is wired up. For
-              now, edit your solution in the <strong>Code</strong> tab.
-            </p>
+          <div className="flex h-full flex-col bg-zinc-950 p-3">
+            <label
+              htmlFor="workspace-stdin"
+              className="mb-2 text-[0.7rem] font-semibold uppercase tracking-wide text-zinc-500"
+            >
+              Stdin (fed to your program)
+            </label>
+            <textarea
+              id="workspace-stdin"
+              value={stdin}
+              onChange={(e) => setStdin(e.target.value)}
+              placeholder="Paste input lines here…"
+              className="min-h-0 flex-1 resize-none rounded-lg border border-zinc-800 bg-zinc-900/80 p-3 font-mono text-xs text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-emerald-600/40"
+            />
           </div>
         )}
       </div>
@@ -86,10 +163,9 @@ export function CodeWorkspace({
         <div className="flex h-8 items-center border-b border-zinc-800 px-3 text-[0.7rem] font-semibold uppercase tracking-wide text-zinc-500">
           Console
         </div>
-        <div className="p-3 font-mono text-xs text-zinc-500">
-          <span className="text-zinc-600">// </span>
-          Output will appear here after you run code.
-        </div>
+        <pre className="max-h-[calc(100%-2rem)] overflow-y-auto whitespace-pre-wrap break-words p-3 font-mono text-xs text-zinc-300">
+          {consoleText}
+        </pre>
       </footer>
     </section>
   )

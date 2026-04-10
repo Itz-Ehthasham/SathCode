@@ -33,7 +33,7 @@ export function PracticePage() {
           <div className="min-h-0 flex-1">
             <CodeWorkspace
               initialCode={SAMPLE_PROBLEM.starterCode}
-              language="typescript"
+              language="javascript"
               className="h-full"
             />
           </div>
@@ -41,7 +41,7 @@ export function PracticePage() {
         <div className="hidden min-h-0 min-w-0 flex-1 md:flex">
           <CodeWorkspace
             initialCode={SAMPLE_PROBLEM.starterCode}
-            language="typescript"
+            language="javascript"
             className="h-full min-w-0 flex-1"
           />
         </div>

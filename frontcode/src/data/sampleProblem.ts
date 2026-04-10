@@ -45,16 +45,15 @@ You can return the answer in any order.`,
     'Only one valid answer exists.',
   ],
   starterCode: `/**
- * @param nums - integer array
- * @param target - target sum
- * @returns indices of two numbers that sum to target
+ * @param {number[]} nums
+ * @param {number} target
+ * @returns {number[]}
  */
-function twoSum(nums: number[], target: number): number[] {
+function twoSum(nums, target) {
   // Your logic here
-
   return []
 }
 
-export { twoSum }
+console.log(JSON.stringify(twoSum([2, 7, 11, 15], 9)))
 `,
 }

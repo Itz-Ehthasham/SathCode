@@ -2,74 +2,40 @@ import { useCallback, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Editor from '@monaco-editor/react'
 import { ChevronDown, Loader2, Play, Terminal } from 'lucide-react'
+import {
+  compileCode,
+  type CompileLanguage,
+} from '@/services/api'
 
 const DEFAULT_CODE = `// Online editor — start coding here.
-// AI assistant and run will plug in later.
+// Run sends this file to the local API (Node).
 
-function greet(name: string): string {
+function greet(name) {
   return \`Hello, \${name}!\`
 }
 
 console.log(greet('CodingPrep'))
 `
 
-type EditorLanguage = 'typescript' | 'javascript' | 'python'
+type EditorLanguage = 'typescript' | 'javascript' | 'python' | 'java'
 
-const languageOptions: { id: EditorLanguage; label: string; monaco: string }[] =
-  [
-    { id: 'typescript', label: 'TypeScript', monaco: 'typescript' },
-    { id: 'javascript', label: 'JavaScript', monaco: 'javascript' },
-    { id: 'python', label: 'Python', monaco: 'python' },
-  ]
-
-function formatLogArg(arg: unknown): string {
-  if (arg === undefined) return 'undefined'
-  if (arg === null) return 'null'
-  if (typeof arg === 'string') return arg
-  if (
-    typeof arg === 'number' ||
-    typeof arg === 'boolean' ||
-    typeof arg === 'bigint'
-  ) {
-    return String(arg)
-  }
-  if (arg instanceof Error) return arg.stack ?? arg.message
-  try {
-    return JSON.stringify(arg)
-  } catch {
-    return String(arg)
-  }
-}
-
-/** Run plain JS in-page; capture console.log (educational — same-origin only). */
-function runJavaScriptInBrowser(src: string): string {
-  const lines: string[] = []
-  const capture = {
-    log: (...args: unknown[]) =>
-      lines.push(args.map(formatLogArg).join(' ')),
-    info: (...args: unknown[]) =>
-      lines.push(args.map(formatLogArg).join(' ')),
-    warn: (...args: unknown[]) =>
-      lines.push('[warn] ' + args.map(formatLogArg).join(' ')),
-    error: (...args: unknown[]) =>
-      lines.push('[error] ' + args.map(formatLogArg).join(' ')),
-  }
-  try {
-    const fn = new Function('console', '"use strict";\n' + src)
-    fn(capture)
-  } catch (e) {
-    lines.push(e instanceof Error ? e.message : String(e))
-  }
-  return lines.length
-    ? lines.join('\n')
-    : '(no output — add console.log(...) to see results)'
-}
+const languageOptions: {
+  id: EditorLanguage
+  label: string
+  monaco: string
+  api: CompileLanguage | null
+}[] = [
+  { id: 'typescript', label: 'TypeScript', monaco: 'typescript', api: null },
+  { id: 'javascript', label: 'JavaScript', monaco: 'javascript', api: 'javascript' },
+  { id: 'python', label: 'Python', monaco: 'python', api: 'python' },
+  { id: 'java', label: 'Java', monaco: 'java', api: 'java' },
+]
 
 export function EditorPage() {
   const [language, setLanguage] = useState<EditorLanguage>('typescript')
   const [code, setCode] = useState(DEFAULT_CODE)
   const [output, setOutput] = useState<string>(
-    'Click Run to execute. JavaScript runs in the browser; TypeScript and Python need the sandbox API.',
+    'Click Run to execute on the backend (JavaScript, Python, Java). Start the API on port 3001 or set VITE_API_PROXY_TARGET.',
   )
   const [isRunning, setIsRunning] = useState(false)
 
@@ -79,34 +45,38 @@ export function EditorPage() {
   const languageLabel =
     languageOptions.find((o) => o.id === language)?.label ?? 'TypeScript'
 
-  const handleRun = useCallback(() => {
+  const apiLanguage =
+    languageOptions.find((o) => o.id === language)?.api ?? null
+
+  const handleRun = useCallback(async () => {
+    if (!apiLanguage) {
+      setOutput(
+        `${languageLabel} is not executed on the server. Switch to JavaScript, Python, or Java, or transpile locally.`,
+      )
+      return
+    }
+
     setIsRunning(true)
-    window.setTimeout(() => {
-      const started = performance.now()
-      let body = ''
-      try {
-        if (language === 'javascript') {
-          body = runJavaScriptInBrowser(code)
-        } else if (language === 'typescript') {
-          body =
-            `[${languageLabel}] In-browser run is not available for TypeScript yet.\n` +
-            'Switch to JavaScript to try execution here, or use the sandbox API when it is connected.'
-        } else {
-          body =
-            `[${languageLabel}] Python runs in the sandbox — connect the backend runner to execute here.`
-        }
-      } catch (e) {
-        body = e instanceof Error ? e.message : String(e)
+    try {
+      const result = await compileCode({
+        code,
+        language: apiLanguage,
+        input: '',
+      })
+      const lines = [(result.output ?? '').replace(/\n$/, '')]
+      if (result.compileTime != null && result.compileTime !== '0.00') {
+        lines.push(`compile: ${result.compileTime} ms`)
       }
-      const ms = Math.round(performance.now() - started)
-      const suffix =
-        language === 'javascript'
-          ? `\n\n— finished in ${ms} ms`
-          : `\n\n— checked in ${ms} ms`
-      setOutput(body + suffix)
+      if (result.executionTime != null) {
+        lines.push(`run: ${result.executionTime} ms`)
+      }
+      setOutput(lines.filter(Boolean).join('\n'))
+    } catch (e) {
+      setOutput(e instanceof Error ? e.message : String(e))
+    } finally {
       setIsRunning(false)
-    }, 0)
-  }, [code, language, languageLabel])
+    }
+  }, [apiLanguage, code, languageLabel])
 
   return (
     <div className="flex h-dvh max-h-dvh flex-col overflow-hidden bg-zinc-950 text-zinc-100">
